@@ -3,33 +3,54 @@ package relevance
 import Metric._
 import scala.io.{BufferedSource, Source}
 import scala.util.Try
-import scala.util.parsing.combinator._
 
 // define some domain classes
-case class User(ident: String, library: List[ArtistInfo])
+case class User(ident: String, library: List[ArtistInfo]) {
+	override def toString: String = ident
+}
 object User {
-	def parse(str: List[String]): List[User] = {
-		str.groupBy(_.split(" ").head)
-	}
+	private val userId = "[0-9a-z]{40}"
+	private val singleUserLine = raw"""($userId)\s+(.*)""".r
+
+	/**
+	 *	Parse multiple Users
+	 */
+	def parse(inputLst: List[String]): List[User] = inputLst.
+		groupBy {
+			case singleUserLine(ident, rest) => ident
+		}.map {
+			case (userIdent, userRecords) =>
+				val userLibrary = userRecords.map { record =>
+					val recordTrimmed = record.dropWhile(_ != ' ').trim
+					ArtistInfo.parse(recordTrimmed)
+				}
+				User(userIdent, userLibrary)
+		}.toList
 }
+
 case class ArtistInfo(name: String, mbid: Option[String], plays: Int)
+object ArtistInfo {
+	private val artistMbId = "[0-9a-z]{8}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{12}"
+	private val artistWithMbid = raw"""($artistMbId)\s+(.*)""".r
 
-
-object UserParser extends RegexParsers {
-	def userString: Parser[User] = phrase(userId ~ opt(artistMbId) ~ artistName ~ playsCount) ^^ {
-		case userIdent ~ artistMbIdOpt ~ artistNameStr ~ plays =>
-			User(userIdent, ArtistInfo(artistNameStr, artistMbIdOpt, plays) :: Nil)
+	private def parseNameAndPlays(input: String): (String, Int) = {
+		val tokenized = input.split(' ')
+		tokenized.init.mkString(" ").trim -> tokenized.last.toInt
 	}
 
-	def userId: Parser[String] = """[0-9a-z]{40}""".r
-
-	def artistMbId: Parser[String] = """[0-9a-z]{8}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{12}""".r
-
-	def artistName: Parser[String] = repsep(artistNamePart, " ") ^^ {case nameParts => nameParts.mkString(" ")}
-	def artistNamePart: Parser[String] = """[\w\p{L}]+""".r
-
-	def playsCount: Parser[Int] = """\d+""".r ^^ {case intTerm => intTerm.toInt}
+	/**
+	 *	Parse one line of artist info (for single user)
+	 */
+	def parse(input: String): ArtistInfo = input match {
+		case artistWithMbid(mbid, restString) =>
+			val (artistName, plays) = parseNameAndPlays(restString)
+			ArtistInfo(artistName, Some(mbid), plays)
+		case artistWithoutMbid =>
+			val (artistName, plays) = parseNameAndPlays(artistWithoutMbid)
+			ArtistInfo(artistName, None, plays)
+	}
 }
+
 
 ///////
 object Relevance {
@@ -42,10 +63,18 @@ object Relevance {
 		val user2 = User("Tony", artists2)
 		val artists3 = ArtistInfo("qwe", None, 4) :: ArtistInfo("asd", None, 6) :: Nil
 		val user3 = User("Goby", artists3)
-
 		val bestUser = findMostRelevant(user1, user2 :: user3 :: Nil)
-
 		println(s"Most relevant for $user1 is $bestUser")
+
+		/////
+
+		import TestingData._
+
+		val everyone = User.parse(testingFifty)
+		everyone.foreach { currentUser =>
+			val bestMatch = findMostRelevant(currentUser, everyone.filterNot(_.ident == currentUser.ident))
+			println(s"Best match for ${currentUser.ident} is ${bestMatch.ident}")
+		}
 
 	}
 
@@ -96,7 +125,9 @@ object Relevance {
 	def findMostRelevant[T](base: T, others: List[T])(implicit ev: Metric[T]): T = {
 		//inner tail recursive function
 		def innerIter(others: List[T], bestSoFar: T, bestMetric: Double): T = others match {
-			case Nil => bestSoFar
+			case Nil =>
+				println(s"Final metric for $base is: $bestMetric")
+				bestSoFar
 			case current :: theRest =>
 				val currentSim = ev.similarity(base, current)
 				if(currentSim > bestMetric)
