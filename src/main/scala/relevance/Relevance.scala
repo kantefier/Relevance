@@ -5,7 +5,11 @@ import scala.io.{BufferedSource, Source}
 import scala.util.Try
 
 // define some domain classes
-case class User(ident: String, library: List[ArtistInfo]) {
+trait Named {
+	val name: String
+}
+case class User(ident: String, library: List[ArtistInfo]) extends Named {
+	val name = ident
 	override def toString: String = ident
 }
 object User {
@@ -72,8 +76,8 @@ object Relevance {
 
 		val everyone = User.parse(testingFifty)
 		everyone.foreach { currentUser =>
-			val bestMatch = findMostRelevant(currentUser, everyone.filterNot(_.ident == currentUser.ident))
-			println(s"Best match for ${currentUser.ident} is ${bestMatch.ident}")
+			val bestMatch = findMostRelevant(currentUser, everyone)
+			println(s"Best match for ${currentUser.ident} is ${bestMatch.ident}\n")
 		}
 
 	}
@@ -121,13 +125,20 @@ object Relevance {
 	}
 
 
-	/// pure part
-	def findMostRelevant[T](base: T, others: List[T])(implicit ev: Metric[T]): T = {
+	/**
+	 *	Given an object and a list of objects that have an implicit Metric defined, return the best matching
+	 */
+	def findMostRelevant[T <: Named](base: T, others: List[T])(implicit ev: Metric[T]): T = {
 		//inner tail recursive function
 		def innerIter(others: List[T], bestSoFar: T, bestMetric: Double): T = others match {
 			case Nil =>
-				println(s"Final metric for $base is: $bestMetric")
+				println(s"Best metric for $base was: $bestMetric")
 				bestSoFar
+
+			// skip comparing the object to itself
+			case current :: theRest if current.name == base.name =>
+				innerIter(theRest, bestSoFar, bestMetric)
+
 			case current :: theRest =>
 				val currentSim = ev.similarity(base, current)
 				if(currentSim > bestMetric)
@@ -139,7 +150,11 @@ object Relevance {
 		others match {
 			// if there's no others, the best match to a user is himself
 			case Nil => base
-			case x :: theRest => innerIter(theRest, x, ev.similarity(base, x))
+			case x :: theRest =>
+				val initialMetric = if(x.name != base.name) ev.similarity(base, x)
+					else -1.0
+
+				innerIter(theRest, x, initialMetric)
 		}
 	}
 }
