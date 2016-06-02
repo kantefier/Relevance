@@ -10,7 +10,7 @@ object ArtistInfo {
     private val artistWithMbid = raw"""($artistMbId)\s+(.*)""".r
 
     private def parseNameAndPlays(input: String): (String, Int) = {
-        val tokenized = input.split(' ')
+        val tokenized = input.split("\\s")
         tokenized.init.mkString(" ").trim -> tokenized.last.toInt
     }
 

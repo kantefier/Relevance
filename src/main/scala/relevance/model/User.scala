@@ -8,7 +8,7 @@ case class User(ident: String, library: List[ArtistInfo]) extends Named {
 
 object User {
     private val userId = "[0-9a-z]{40}"
-    private val singleUserLine = raw"""($userId)\s+(.*)""".r
+    val singleUserLine = raw"""($userId)\s+(.*)""".r
 
     /**
      * Parse multiple Users
@@ -18,10 +18,10 @@ object User {
         case singleUserLine(ident, rest) => ident
     }.map {
         case (userIdent, userRecords) =>
-            val userLibrary = userRecords.map { record =>
-                // cut out user ident from the beginning
-                val recordTrimmed = record.dropWhile(_ != ' ').trim
-                ArtistInfo.parse(recordTrimmed)
+            val userLibrary = userRecords.map {
+                case singleUserLine(_, restRecord) =>
+                    // cut out user ident from the beginning
+                    ArtistInfo.parse(restRecord.trim)
             }
             User(userIdent, userLibrary)
     }.toList

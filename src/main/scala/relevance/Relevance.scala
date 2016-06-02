@@ -2,6 +2,7 @@ package relevance
 
 import relevance.model._
 import scala.util.Try
+import scala.io.{Codec, Source}
 import scala.language.implicitConversions
 
 object Relevance {
@@ -26,48 +27,77 @@ object Relevance {
 			println(s"Best match for ${currentUser.ident} is ${bestMatch.ident}\n")
 		}
 
+		//////
+
+		println("Mega test begins!\n")
+		rootProcess()
+/*
+		println("Same shit, but straight forward")
+		val users = User.parse(Source.fromFile("D:\\Dev\\dataset\\hundred")(Codec.UTF8).getLines().toList)
+		users.map{user =>
+			user -> findMostRelevant(user, users)
+		}.foreach(pair => println(pair._1 + " " + pair._2))*/
 	}
 
-	/*def sequentialPerform(datasetFilepath: String, currentUser: User): User = {
-		for {
-			line <- Source.fromFile(datasetFilepath).getLines()
+	def performSequentialRead[T](sourceIter: Iterator[String], resultAccum: List[T] = Nil)(f: List[User] => T): List[T] =
+		if(sourceIter.hasNext) {
+			val (dataChunk, nextChunkIterator) = getChunk(sourceIter, 50)
+			val users = User.parse(dataChunk)
+			val currentResult = f(users)
+			performSequentialRead(nextChunkIterator, currentResult :: resultAccum)(f)
+		} else {
+			resultAccum
 		}
-	}*/
+
+	def rootProcess(): Unit = {
+		val datasetFilePath = "D:\\Dev\\dataset\\usersha1-artmbid-artname-plays.tsv"
+//		val datasetFilePath = "D:\\Dev\\dataset\\hundred"
+
+		val mainSourceIterator = Source.fromFile(datasetFilePath)(Codec.UTF8).getLines()
+
+		performSequentialRead(mainSourceIterator) { parsedUsers =>
+			parsedUsers.par.map { currentUser =>
+				val secondSourceIter = Source.fromFile(datasetFilePath)(Codec.UTF8).getLines()
+				val relevantVariants = performSequentialRead(secondSourceIter) { others =>
+					findMostRelevant(currentUser, others)
+				}
+				currentUser.toString + " " + findMostRelevant(currentUser, relevantVariants).toString
+			}.toList
+		}.flatten.foreach(println)
+		/*val data = mainSourceIterator.toList
+		val userList = User.parse(data)
+		userList.foreach { currentUser =>
+			val bestMatch = findMostRelevant(currentUser, userList)
+//			println(s"Best match for $currentUser is $bestMatch")
+		}*/
+	}
 
 	/**
 	 *	Read a chunk of data from given iterator
 	 */
-	def getChunk(source: Iterator[String], minChunkSize: Int = 200): (List[String], Iterator[String]) = {
+	def getChunk(inputIter: Iterator[String], minChunkSize: Int = 500): (List[String], Iterator[String]) = {
 		// two strings are records for the same user if the first substrings before spaces are equal
-		def sameUserStrings(str1: String, str2: String): Boolean = {
-			val indexOfSpace1 = str1.indexOf(' ')
-			val indexOfSpace2 = str2.indexOf(' ')
-			Try(str1.substring(0, indexOfSpace1) == str2.substring(0, indexOfSpace2)).getOrElse(false)
+		def sameUserStrings(str1: String, str2: String): Boolean = str1 -> str2 match {
+			case (User.singleUserLine(user1, _), User.singleUserLine(user2, _)) => user1 == user2
+			case _ => false
 		}
 
+		val source = inputIter.buffered
 		// recursive iteration function
-		def iterTaker(taken: List[String], prevIter: Iterator[String], chunksTaken: Int = 0): (List[String], Iterator[String]) = {
+		def iterTaker(taken: List[String], chunksTaken: Int = 0): (List[String], Iterator[String]) = {
 			if(source.hasNext) {
-				val nextItem = source.next()
-
-				if(chunksTaken < minChunkSize) {
-					iterTaker(nextItem :: taken, prevIter.drop(1), chunksTaken + 1)
-				} else if(sameUserStrings(nextItem, taken.headOption.getOrElse(""))) {
-					iterTaker(nextItem :: taken, prevIter.drop(1), chunksTaken + 1)
-				} else {
-					(taken, prevIter)
+				source.head match {
+					case str if (chunksTaken < minChunkSize) | sameUserStrings(str, taken.headOption.getOrElse("")) =>
+						iterTaker(source.next :: taken, chunksTaken + 1)
+					case _ =>
+						(taken, source)
 				}
 			} else {
 				(taken, Iterator.empty)
 			}
 		}
 
-		if(source.hasNext) {
-			val prevIterator = source.duplicate._2
-			iterTaker(source.next :: Nil, prevIterator)
-		} else {
-			(Nil, Iterator.empty)
-		}
+		iterTaker(Nil)
 	}
 
 
@@ -78,7 +108,7 @@ object Relevance {
 		//inner tail recursive function
 		def innerIter(others: List[T], bestSoFar: T, bestMetric: Double): T = others match {
 			case Nil =>
-				println(s"Best metric for $base was: $bestMetric")
+//				println(s"Best metric for $base was: $bestMetric")
 				bestSoFar
 
 			// skip comparing the object to itself

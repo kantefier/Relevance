@@ -14,12 +14,12 @@ object Metric {
 		def similarity(x: User, y: User): Double = {
 			// collect common artists from users' listening libraries
 			val commonArtistsX: List[ArtistInfo] = x.library.filter(artInfo => y.library.map(_.name).contains(artInfo.name))
-			val commonArtistsY: List[ArtistInfo] = y.library.filter(artInfo => commonArtistsX.map(_.name).contains(artInfo.name))
+			val commonArtistsY: List[ArtistInfo] = y.library.filter(artInfo => x.library.map(_.name).contains(artInfo.name))
 
 			// common artists count
-			val N = commonArtistsX.length
-			if(N == 0)
-				0
+			val N = commonArtistsX.length.toDouble
+			if(N == 0.0)
+				0.0
 			else {
 				// sums of plays
 				val sumX = commonArtistsX.map(_.plays).sum
@@ -35,14 +35,21 @@ object Metric {
 				}.sum
 
 
-				val numerator = productSum - (sumX * sumY)/N
-				val denominator = scala.math.sqrt( (sumSquareX - (sumX * sumX)/N)*(sumSquareY - (sumY * sumY)/N) )
+				val numerator: Double = productSum - (sumX * sumY)/N
+				val denominator: Double = scala.math.sqrt( (sumSquareX - (sumX * sumX)/N)*(sumSquareY - (sumY * sumY)/N) )
 
-				// division by zero
-				if(denominator == 0)
-					0
-				else
-					numerator / denominator
+
+				val result =
+					if(denominator == 0.0)
+						0
+					else
+						numerator / denominator
+
+				/*if(result == 1.0) {
+					println(s"[Exact match][common artists: $N] $x $y")
+				}*/
+
+				result
 			}
 		}
 	}
