@@ -1,64 +1,10 @@
 package relevance
 
-import Metric._
-import scala.io.{BufferedSource, Source}
+import relevance.model._
 import scala.util.Try
+import scala.language.implicitConversions
 
-// define some domain classes
-trait Named {
-	val name: String
-}
-case class User(ident: String, library: List[ArtistInfo]) extends Named {
-	val name = ident
-	override def toString: String = ident
-}
-object User {
-	private val userId = "[0-9a-z]{40}"
-	private val singleUserLine = raw"""($userId)\s+(.*)""".r
-
-	/**
-	 *	Parse multiple Users
-	 */
-	def parse(inputLst: List[String]): List[User] = inputLst.
-		groupBy {
-			case singleUserLine(ident, rest) => ident
-		}.map {
-			case (userIdent, userRecords) =>
-				val userLibrary = userRecords.map { record =>
-					val recordTrimmed = record.dropWhile(_ != ' ').trim
-					ArtistInfo.parse(recordTrimmed)
-				}
-				User(userIdent, userLibrary)
-		}.toList
-}
-
-case class ArtistInfo(name: String, mbid: Option[String], plays: Int)
-object ArtistInfo {
-	private val artistMbId = "[0-9a-z]{8}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{12}"
-	private val artistWithMbid = raw"""($artistMbId)\s+(.*)""".r
-
-	private def parseNameAndPlays(input: String): (String, Int) = {
-		val tokenized = input.split(' ')
-		tokenized.init.mkString(" ").trim -> tokenized.last.toInt
-	}
-
-	/**
-	 *	Parse one line of artist info (for single user)
-	 */
-	def parse(input: String): ArtistInfo = input match {
-		case artistWithMbid(mbid, restString) =>
-			val (artistName, plays) = parseNameAndPlays(restString)
-			ArtistInfo(artistName, Some(mbid), plays)
-		case artistWithoutMbid =>
-			val (artistName, plays) = parseNameAndPlays(artistWithoutMbid)
-			ArtistInfo(artistName, None, plays)
-	}
-}
-
-
-///////
 object Relevance {
-	import scala.language.implicitConversions
 
 	def main(args: Array[String]) = {
 		val artists1 = ArtistInfo("qwe", None, 2) :: ArtistInfo("asd", None, 3) :: Nil

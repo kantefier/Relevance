@@ -1,8 +1,8 @@
-package relevance
+package relevance.model
 
 // import Relevance.{User, ArtistiInfo}
 
-import annotation.implicitNotFound
+import scala.annotation.implicitNotFound
 @implicitNotFound("No member of type class Metric in scope for ${T}")
 trait Metric[T] {
 	def similarity(x: T, y: T): Double
