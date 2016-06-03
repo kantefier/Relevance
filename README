@@ -1,1 +1,10 @@
-Hello, commit!
+To run this execute:
+	sbt run {args}
+Where {args} are:
+  first arg: dataset filepath
+  second arg: output filepath
+  [optional] third arg: main chunk size
+  [optional] fourth arg: secondary chunk size""".stripMargin)
+
+Example:
+	sbt run /home/user/dataset /home/user/relativeUserPairs 400 5000
