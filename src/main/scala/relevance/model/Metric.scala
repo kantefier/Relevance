@@ -1,7 +1,5 @@
 package relevance.model
 
-// import Relevance.{User, ArtistiInfo}
-
 import scala.annotation.implicitNotFound
 @implicitNotFound("No member of type class Metric in scope for ${T}")
 trait Metric[T] {
@@ -38,18 +36,10 @@ object Metric {
 				val numerator: Double = productSum - (sumX * sumY)/N
 				val denominator: Double = scala.math.sqrt( (sumSquareX - (sumX * sumX)/N)*(sumSquareY - (sumY * sumY)/N) )
 
-
-				val result =
-					if(denominator == 0.0)
-						0
-					else
-						numerator / denominator
-
-				/*if(result == 1.0) {
-					println(s"[Exact match][common artists: $N] $x $y")
-				}*/
-
-				result
+				if(denominator == 0.0)
+					0.0
+				else
+					numerator / denominator
 			}
 		}
 	}

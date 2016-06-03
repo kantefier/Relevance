@@ -1,76 +1,70 @@
 package relevance
 
 import relevance.model._
-import scala.util.Try
+import scala.concurrent.duration._
+import scala.concurrent.{Await, Future}
 import scala.io.{Codec, Source}
 import scala.language.implicitConversions
 
 object Relevance {
 
-	def main(args: Array[String]) = {
-		val artists1 = ArtistInfo("qwe", None, 2) :: ArtistInfo("asd", None, 3) :: Nil
-		val user1 = User("Charlie", artists1)
-		val artists2 = ArtistInfo("qwe", None, 4) :: ArtistInfo("asd", None, 9) :: Nil
-		val user2 = User("Tony", artists2)
-		val artists3 = ArtistInfo("qwe", None, 4) :: ArtistInfo("asd", None, 6) :: Nil
-		val user3 = User("Goby", artists3)
-		val bestUser = findMostRelevant(user1, user2 :: user3 :: Nil)
-		println(s"Most relevant for $user1 is $bestUser")
-
-		/////
-
-		import TestingData._
-
-		val everyone = User.parse(testingFifty)
-		everyone.foreach { currentUser =>
-			val bestMatch = findMostRelevant(currentUser, everyone)
-			println(s"Best match for ${currentUser.ident} is ${bestMatch.ident}\n")
-		}
-
-		//////
-
-		println("Mega test begins!\n")
-		rootProcess()
-/*
-		println("Same shit, but straight forward")
-		val users = User.parse(Source.fromFile("D:\\Dev\\dataset\\hundred")(Codec.UTF8).getLines().toList)
-		users.map{user =>
-			user -> findMostRelevant(user, users)
-		}.foreach(pair => println(pair._1 + " " + pair._2))*/
+	/**
+	 *	Entry point. Called on sbt's "run" task
+	 */
+	def main(args: Array[String]) = args.toList match {
+		case inPath :: outPath :: mainChunkSize :: innerChunkSize :: Nil =>
+			processDataset(inPath, outPath, mainChunkSize.toInt, innerChunkSize.toInt)
+		case inPath :: outPath :: mainChunkSize :: Nil =>
+			processDataset(inPath, outPath, mainChunkSize.toInt)
+		case inPath :: outPath :: Nil =>
+			processDataset(inPath, outPath)
+		case _ =>
+			println("""Usage:
+  |first arg: dataset filepath
+  |second arg: output filepath
+  |[optional] third arg: main chunk size
+  |[optional] fourth arg: secondary chunk size""".stripMargin)
 	}
 
-	def performSequentialRead[T](sourceIter: Iterator[String], resultAccum: List[T] = Nil)(f: List[User] => T): List[T] =
+	/**
+	 *	General function that launches all the calculations
+	 */
+	def processDataset(datasetFilePath: String, resultFilePath: String, mainChunkSize: Int = 500, secondaryChunkSize: Int = 1000): Unit = {
+		import scala.concurrent.ExecutionContext.Implicits.global
+
+		val mainSourceIterator = Source.fromFile(datasetFilePath)(Codec.UTF8).getLines()
+		val resultWriter = ResultWriter(resultFilePath)
+
+		performSequentialRead(mainSourceIterator, chunkSize = mainChunkSize) { parsedUsers =>
+			parsedUsers.map { currentUser =>
+				Future {
+
+					val secondSourceIter = Source.fromFile(datasetFilePath)(Codec.UTF8).getLines()
+					val relevantVariants: List[User] = performSequentialRead(secondSourceIter, chunkSize = secondaryChunkSize) { others =>
+						Future(findMostRelevant(currentUser, others))
+					}.map(futureUser => Await.result(futureUser, 5.minutes))
+
+					currentUser.toString + " " + findMostRelevant(currentUser, relevantVariants).toString
+
+				}.map(resultWriter.write)
+			}.foreach(future => Await.ready(future, 10.minutes))
+			resultWriter.flush()
+		}
+	}
+
+	/**
+	 *	Given Iterator[String], perform reading file by chunks, applying f to each chunk and accumulating the result
+	 *	Returns a list of results
+	 */
+	def performSequentialRead[T](sourceIter: Iterator[String], resultAccum: List[T] = Nil, chunkSize: Int = 500)(f: List[User] => T): List[T] =
 		if(sourceIter.hasNext) {
-			val (dataChunk, nextChunkIterator) = getChunk(sourceIter, 50)
+			val (dataChunk, nextChunkIterator) = getChunk(sourceIter, chunkSize)
 			val users = User.parse(dataChunk)
 			val currentResult = f(users)
-			performSequentialRead(nextChunkIterator, currentResult :: resultAccum)(f)
+			performSequentialRead(nextChunkIterator, currentResult :: resultAccum, chunkSize)(f)
 		} else {
 			resultAccum
 		}
-
-	def rootProcess(): Unit = {
-		val datasetFilePath = "D:\\Dev\\dataset\\usersha1-artmbid-artname-plays.tsv"
-//		val datasetFilePath = "D:\\Dev\\dataset\\hundred"
-
-		val mainSourceIterator = Source.fromFile(datasetFilePath)(Codec.UTF8).getLines()
-
-		performSequentialRead(mainSourceIterator) { parsedUsers =>
-			parsedUsers.par.map { currentUser =>
-				val secondSourceIter = Source.fromFile(datasetFilePath)(Codec.UTF8).getLines()
-				val relevantVariants = performSequentialRead(secondSourceIter) { others =>
-					findMostRelevant(currentUser, others)
-				}
-				currentUser.toString + " " + findMostRelevant(currentUser, relevantVariants).toString
-			}.toList
-		}.flatten.foreach(println)
-		/*val data = mainSourceIterator.toList
-		val userList = User.parse(data)
-		userList.foreach { currentUser =>
-			val bestMatch = findMostRelevant(currentUser, userList)
-//			println(s"Best match for $currentUser is $bestMatch")
-		}*/
-	}
 
 	/**
 	 *	Read a chunk of data from given iterator
@@ -83,6 +77,7 @@ object Relevance {
 		}
 
 		val source = inputIter.buffered
+
 		// recursive iteration function
 		def iterTaker(taken: List[String], chunksTaken: Int = 0): (List[String], Iterator[String]) = {
 			if(source.hasNext) {
