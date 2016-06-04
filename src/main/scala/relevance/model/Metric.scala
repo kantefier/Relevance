@@ -16,7 +16,7 @@ object Metric {
 
 			// common artists count
 			val N = commonArtistsX.length.toDouble
-			if(N == 0.0)
+			if(N <= 2)
 				0.0
 			else {
 				// sums of plays

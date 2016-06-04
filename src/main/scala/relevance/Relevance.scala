@@ -112,8 +112,10 @@ object Relevance {
 
 			case current :: theRest =>
 				val currentSim = ev.similarity(base, current)
-				if(currentSim > bestMetric)
+				if(currentSim > bestMetric) // found a better match
 					innerIter(theRest, current, currentSim)
+				else if(currentSim == 1.0) // found the best match
+					current
 				else
 					innerIter(theRest, bestSoFar, bestMetric)
 		}
