@@ -50,4 +50,49 @@ object TestingData {
             }
         }
     }.toList
+
+    /**
+    *   Generates infinite testing data stream
+    */
+    def infiniteData(artistCount: Int): Stream[String] = {
+        val artists: List[String] = genArtists(artistCount)
+        Stream.from(1).flatMap { _ =>
+            val userIdent = randomStringFromChars(('a' to 'z') ++ ('A' to 'Z') ++ ('0' to '9'), 40)
+            artists.map { artist =>
+                userIdent + " qwertyMBIDqwerty " + artist + " " + rand.nextInt(2000)
+            }
+        }
+    }
+
+    /**
+    *   Writes infinite stream to file
+    */
+    def streamToFile(stream: Stream[String], filePath: String, maxLines: Int, chunkSize: Int = 50): Unit = {
+        import java.io._
+
+        val outFile = {
+            val daFile = new File(filePath)
+            daFile.createNewFile()
+            daFile
+        }
+        val outStream = new BufferedOutputStream( new FileOutputStream(outFile, false) )
+
+        def performWrite(inStream: Stream[String], currentLine: Int): Unit = {
+            if(inStream.isEmpty || currentLine >= maxLines) {
+                Unit //return from recursion
+            } else {
+                val thisChunkSize = {
+                    if(currentLine + chunkSize > maxLines)
+                        maxLines - currentLine
+                    else
+                        chunkSize
+                }
+                val (streamChunk, restStream) = inStream.splitAt(thisChunkSize)
+                streamChunk.map(str => (str + "\n").getBytes("UTF-8")).foreach(outStream.write)
+                performWrite(restStream, currentLine + thisChunkSize)
+            }
+        }
+
+        try performWrite(stream, 0) finally outStream.close
+    }
 }
