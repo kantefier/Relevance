@@ -66,6 +66,8 @@ object TestingData {
 
     /**
     *   Writes infinite stream to file
+    *   TODO: fix "GC overhead limit exceeded" bug for big line numbers
+    *       Possible cause: maybe the infinite stream itself doesn't clear up and just grows in the memory as it evaluates
     */
     def streamToFile(stream: Stream[String], filePath: String, maxLines: Int, chunkSize: Int = 50): Unit = {
         import java.io._
