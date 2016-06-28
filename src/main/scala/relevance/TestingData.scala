@@ -68,6 +68,7 @@ object TestingData {
     *   Writes infinite stream to file
     *   TODO: fix "GC overhead limit exceeded" bug for big line numbers
     *       Possible cause: the infinite stream doesn't clear up and just grows in the memory as it evaluates
+    *       Current Status: workaround applied. The memory still fills up, processing slows down, but doesn't crash
     */
     def streamToFile(stream: Stream[String], filePath: String, maxLines: Int, chunkSize: Int = 50): Unit = {
         import java.io._
@@ -91,10 +92,18 @@ object TestingData {
                 }
                 val (streamChunk, restStream) = inStream.splitAt(thisChunkSize)
                 streamChunk.map(str => (str + "\n").getBytes("UTF-8")).foreach(outStream.write)
-                performWrite(restStream, currentLine + thisChunkSize)
+                performWrite(toNewStream(restStream.iterator), currentLine + thisChunkSize)
             }
         }
 
         try performWrite(stream, 0) finally outStream.close
     }
+
+    /**
+    *   Workaround, suggested by this topic:
+    *   http://stackoverflow.com/questions/20985539/scala-erastothenes-is-there-a-straightforward-way-to-replace-a-stream-with-an
+    */
+    def toNewStream[T](i: Iterator[T]): Stream[T] =
+        if (i.hasNext) Stream.cons(i.next, toNewStream(i))
+        else Stream.empty
 }
